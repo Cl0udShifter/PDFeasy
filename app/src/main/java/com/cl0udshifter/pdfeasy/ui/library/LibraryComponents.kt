@@ -1,6 +1,7 @@
 package com.cl0udshifter.pdfeasy.ui.library
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,9 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -24,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
@@ -38,6 +42,9 @@ private object LibraryHeaderDimens {
     val PrimaryButtonHeight = 40.dp
     val IconSmall = 16.dp
     val IconMedium = 18.dp
+    val IconLarge = 20.dp
+    val UpdateBadgeSize = 7.dp
+    val UpdateBadgeOffset = 10.dp
     val MinTouchTarget = 48.dp
     val SearchHeight = 44.dp
     val SearchIconPadding = 14.dp
@@ -48,6 +55,8 @@ private object LibraryHeaderDimens {
 @Composable
 fun LibraryHeader(
     onOpenPdfClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    hasUpdateAvailable: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -65,24 +74,65 @@ fun LibraryHeader(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
         )
-        Button(
-            onClick = onOpenPdfClick,
-            shape = MaterialTheme.shapes.extraLarge,
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            contentPadding = PaddingValues(horizontal = LibraryHeaderDimens.SearchIconPadding),
-            modifier = Modifier.height(LibraryHeaderDimens.PrimaryButtonHeight),
-        ) {
-            Icon(
-                painter = PdfEasyIcons.painter(PdfEasyIcons.Add),
-                contentDescription = null,
-                modifier = Modifier.size(LibraryHeaderDimens.IconSmall),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LibrarySettingsButton(
+                hasUpdateAvailable = hasUpdateAvailable,
+                onClick = onSettingsClick,
             )
             Spacer(modifier = Modifier.size(LibraryHeaderDimens.ChipSpacing))
-            Text(text = stringResource(R.string.library_open_pdf), style = MaterialTheme.typography.labelLarge)
+            Button(
+                onClick = onOpenPdfClick,
+                shape = MaterialTheme.shapes.extraLarge,
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                contentPadding = PaddingValues(horizontal = LibraryHeaderDimens.SearchIconPadding),
+                modifier = Modifier.height(LibraryHeaderDimens.PrimaryButtonHeight),
+            ) {
+                Icon(
+                    painter = PdfEasyIcons.painter(PdfEasyIcons.Add),
+                    contentDescription = null,
+                    modifier = Modifier.size(LibraryHeaderDimens.IconSmall),
+                )
+                Spacer(modifier = Modifier.size(LibraryHeaderDimens.ChipSpacing))
+                Text(text = stringResource(R.string.library_open_pdf), style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySettingsButton(
+    hasUpdateAvailable: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(LibraryHeaderDimens.MinTouchTarget),
+    ) {
+        IconButton(onClick = onClick, modifier = Modifier.size(LibraryHeaderDimens.MinTouchTarget)) {
+            Icon(
+                painter = PdfEasyIcons.painter(PdfEasyIcons.Settings),
+                contentDescription = stringResource(R.string.settings_open),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(LibraryHeaderDimens.IconLarge),
+            )
+        }
+        if (hasUpdateAvailable) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(
+                            x = -LibraryHeaderDimens.UpdateBadgeOffset,
+                            y = LibraryHeaderDimens.UpdateBadgeOffset,
+                        )
+                        .size(LibraryHeaderDimens.UpdateBadgeSize)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+            )
         }
     }
 }

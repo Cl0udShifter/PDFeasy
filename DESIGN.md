@@ -187,3 +187,26 @@ Consome `PdfEngine`, `PdfSession`, `ReadingProgressRepository` e `BookmarkReposi
    - `PasswordRequired` / `InvalidPassword`: exibe `AlertDialog` editorial com `OutlinedTextField` de senha, alternador de visibilidade, erro inline no caso de `InvalidPassword` e ações `Voltar` / `Abrir`.
    - `FileNotFoundOrMoved` / `PermissionDenied` / `CorruptedOrUnsupportedPdf`: exibe tela de estado de erro clara com explicação, opção de voltar à biblioteca ou re-selecionar arquivo via SAF.
    - `Intent.ACTION_VIEW` (`application/pdf` / `content://` / `file://`): `MainActivity` registra o documento via `LibraryRepository.registerOrUpdateDocument` e navega diretamente para o Leitor, preservando o histórico na volta para a Biblioteca.
+
+---
+
+### 5.3 Tela 3: Configurações (`SettingsScreen`)
+Consome `SettingsRepository` (`AppSettings`) e `AppUpdateRepository` (`AppUpdateStatus`, `AppUpdateDownloadState`, `AppUpdateError`).
+
+1. **Pontos de acesso:**
+   - **Biblioteca (`LibraryHeader`):** botão `48.dp` com ícone de engrenagem discreto à esquerda de `Abrir PDF` (exibe ponto indicador em `primary` quando há atualização disponível).
+   - **Leitor (`ReaderTopBar`):** pílula circular `38.dp` (área tátil `48.dp`) com ícone de engrenagem ao lado do contador de páginas; retornar das Configurações devolve o usuário ao leitor aberto.
+2. **Cabeçalho e ritmo da página:**
+   - Barra superior limpa (`0.dp` de sombra em repouso) com botão voltar `48.dp` e título `"Configurações"` (`titleLarge`, `Source Serif 4`).
+   - Lista vertical rolável com largura máxima `560.dp` centralizada em telas expandidas, margem horizontal de `18.dp` / `24.dp` e blocos agrupados em superfícies `surfaceContainerLow` (`18.dp`, separadores `1.dp` `outlineVariant`, zero sombras).
+3. **Seções e controles:**
+   - **Aparência (`appTheme`):** seletor segmentado em pílula (`Sistema`, `Claro`, `Escuro`), aplicado imediatamente no `MainActivity` com ajuste automático de contraste das barras do sistema.
+   - **Padrões de Leitura** (aplicados ao abrir novos documentos sem histórico salvo):
+     - **Tema da página (`defaultRenderTheme`):** opções `Original`, `Escuro` e `Sépia` com swatches reais idênticos aos do leitor.
+     - **Rolagem padrão (`defaultScrollMode`):** seletor segmentado `Vertical` / `Horizontal`.
+     - **Zoom inicial (`defaultZoomScale`):** slider editorial compacto (`4.dp x 20.dp`, trilho `6.dp`) entre `1.0x` e `3.0x` com leitura numérica em `tnum`.
+     - **Manter tela acesa (`keepScreenOn`):** switch aplicado continuamente enquanto a viewport de leitura estiver ativa.
+   - **Sobre e atualizações (`AppUpdateRepository`):**
+     - Versão instalada (`v${currentVersionName}`, build em `tnum`) e data/hora da última verificação.
+     - Switches para `Incluir pre-releases` e `Verificar atualizações ao iniciar`.
+     - Ação `Verificar atualizações` + painel de resultado inline: estado atualizado, cartão de nova versão com notas recolhíveis, barra de progresso durante `Downloading`, verificação/solicitação de `ACTION_MANAGE_UNKNOWN_APP_SOURCES`, disparo do instalador Android via `FileProvider` em `ReadyToInstall`, botão `Limpar cache de atualizações` e mensagens tipadas para cada `AppUpdateError`.

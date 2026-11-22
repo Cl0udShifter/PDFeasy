@@ -7,6 +7,7 @@ import com.cl0udshifter.pdfeasy.core.data.preferences.ReaderPreferencesStore
 import com.cl0udshifter.pdfeasy.core.domain.BookmarkRepository
 import com.cl0udshifter.pdfeasy.core.domain.LibraryRepository
 import com.cl0udshifter.pdfeasy.core.domain.ReadingProgressRepository
+import com.cl0udshifter.pdfeasy.core.domain.SettingsRepository
 import com.cl0udshifter.pdfeasy.core.model.CoreResult
 import com.cl0udshifter.pdfeasy.core.model.NormalizedRect
 import com.cl0udshifter.pdfeasy.core.model.PageDimensions
@@ -38,6 +39,7 @@ class ReaderViewModel(
     private val readingProgressRepository: ReadingProgressRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val readerPreferencesStore: ReaderPreferencesStore,
+    private val settingsRepository: SettingsRepository? = null,
     private val progressDebounceMs: Long = DEFAULT_PROGRESS_DEBOUNCE_MS,
     private val recycleDelayMs: Long = DEFAULT_RECYCLE_DELAY_MS,
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -62,6 +64,7 @@ class ReaderViewModel(
 
     init {
         observeBookmarksForDocument()
+        observeReaderSettings()
         openDocument(password = null)
     }
 
@@ -292,6 +295,15 @@ class ReaderViewModel(
         }
     }
 
+    private fun observeReaderSettings() {
+        val repo = settingsRepository ?: return
+        viewModelScope.launch {
+            repo.observeSettings().collect { settings ->
+                uiStateMutable.update { it.copy(keepScreenOn = settings.keepScreenOn) }
+            }
+        }
+    }
+
     private suspend fun onSessionOpened(
         session: PdfSession,
         passwordUsed: Boolean,
@@ -301,6 +313,7 @@ class ReaderViewModel(
         activeSession = session
 
         val savedProgress = readingProgressRepository.getProgress(documentId)
+        val settingsSnapshot = settingsRepository?.getSettings()
         val defaults = readerPreferencesStore.getDefaults()
         val pageCount = session.pageCount
         val initialPage =
@@ -310,9 +323,12 @@ class ReaderViewModel(
                 0
             }
         val initialOffset = (savedProgress?.scrollOffsetNormalized ?: 0f).coerceIn(0f, 1f)
-        val initialZoom = (savedProgress?.zoomScale ?: MIN_ZOOM).coerceIn(MIN_ZOOM, MAX_ZOOM)
-        val initialTheme = savedProgress?.renderTheme ?: defaults.renderTheme
-        val initialScrollMode = savedProgress?.scrollMode ?: defaults.scrollMode
+        val fallbackZoom = settingsSnapshot?.defaultZoomScale ?: MIN_ZOOM
+        val initialZoom = (savedProgress?.zoomScale ?: fallbackZoom).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        val initialTheme =
+            savedProgress?.renderTheme ?: settingsSnapshot?.defaultRenderTheme ?: defaults.renderTheme
+        val initialScrollMode =
+            savedProgress?.scrollMode ?: settingsSnapshot?.defaultScrollMode ?: defaults.scrollMode
 
         val initialDims = loadInitialWindowDimensions(session, initialPage)
 
@@ -564,6 +580,7 @@ class ReaderViewModel(
             readingProgressRepository: ReadingProgressRepository,
             bookmarkRepository: BookmarkRepository,
             readerPreferencesStore: ReaderPreferencesStore,
+            settingsRepository: SettingsRepository,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -577,6 +594,7 @@ class ReaderViewModel(
                         readingProgressRepository = readingProgressRepository,
                         bookmarkRepository = bookmarkRepository,
                         readerPreferencesStore = readerPreferencesStore,
+                        settingsRepository = settingsRepository,
                     ) as T
             }
     }

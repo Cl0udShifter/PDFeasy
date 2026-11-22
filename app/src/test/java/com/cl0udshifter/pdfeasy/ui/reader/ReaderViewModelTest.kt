@@ -7,6 +7,9 @@ import com.cl0udshifter.pdfeasy.core.domain.BookmarkRepository
 import com.cl0udshifter.pdfeasy.core.domain.LibraryItemWithProgress
 import com.cl0udshifter.pdfeasy.core.domain.LibraryRepository
 import com.cl0udshifter.pdfeasy.core.domain.ReadingProgressRepository
+import com.cl0udshifter.pdfeasy.core.domain.SettingsRepository
+import com.cl0udshifter.pdfeasy.core.model.AppSettings
+import com.cl0udshifter.pdfeasy.core.model.AppThemeMode
 import com.cl0udshifter.pdfeasy.core.model.Bookmark
 import com.cl0udshifter.pdfeasy.core.model.CoreResult
 import com.cl0udshifter.pdfeasy.core.model.NormalizedRect
@@ -167,6 +170,47 @@ class ReaderViewModelTest {
             assertTrue(viewModel.uiState.value.search.matches.isEmpty())
         }
 
+    @Test
+    fun `applies default zoom scale and reacts to keepScreenOn from SettingsRepository`() =
+        runTest(testDispatcher) {
+            val session = FakePdfSession(pageCount = PAGE_COUNT)
+            val engine = FakePdfEngine(requiredPassword = null, session = session)
+            val settingsRepo =
+                FakeReaderSettingsRepo(
+                    AppSettings(
+                        defaultRenderTheme = PageRenderTheme.DARK,
+                        defaultScrollMode = ScrollMode.CONTINUOUS_HORIZONTAL,
+                        defaultZoomScale = 1.6f,
+                        keepScreenOn = false,
+                    ),
+                )
+            val viewModel =
+                ReaderViewModel(
+                    documentId = "doc-settings",
+                    uriString = "content://docs/settings.pdf",
+                    initialDisplayName = "Manual.pdf",
+                    pdfEngine = engine,
+                    libraryRepository = FakeLibraryRepo(),
+                    readingProgressRepository = FakeProgressRepo(),
+                    bookmarkRepository = FakeBookmarkRepo(),
+                    readerPreferencesStore = FakePreferencesStore(),
+                    settingsRepository = settingsRepo,
+                    progressDebounceMs = DEBOUNCE_MS,
+                    recycleDelayMs = 0L,
+                    nowMillis = { 10_000L },
+                )
+            advanceUntilIdle()
+
+            assertEquals(1.6f, viewModel.uiState.value.zoomScale, 0.001f)
+            assertEquals(PageRenderTheme.DARK, viewModel.uiState.value.renderTheme)
+            assertEquals(ScrollMode.CONTINUOUS_HORIZONTAL, viewModel.uiState.value.scrollMode)
+            assertFalse(viewModel.uiState.value.keepScreenOn)
+
+            settingsRepo.setKeepScreenOn(true)
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.keepScreenOn)
+        }
+
     private fun createViewModel(
         engine: PdfEngine,
         libraryRepo: LibraryRepository = FakeLibraryRepo(),
@@ -314,6 +358,34 @@ class ReaderViewModelTest {
         ) {
             state.value = ReaderDefaults(renderTheme, scrollMode)
         }
+    }
+
+    private class FakeReaderSettingsRepo(
+        initial: AppSettings = AppSettings(),
+    ) : SettingsRepository {
+        private val state = MutableStateFlow(initial)
+
+        override fun observeSettings(): Flow<AppSettings> = state
+
+        override suspend fun getSettings(): AppSettings = state.value
+
+        override suspend fun setAppTheme(theme: AppThemeMode) = Unit
+
+        override suspend fun setDefaultRenderTheme(theme: PageRenderTheme) = Unit
+
+        override suspend fun setDefaultScrollMode(scrollMode: ScrollMode) = Unit
+
+        override suspend fun setDefaultZoomScale(zoomScale: Float) = Unit
+
+        override suspend fun setKeepScreenOn(enabled: Boolean) {
+            state.value = state.value.copy(keepScreenOn = enabled)
+        }
+
+        override suspend fun setIncludePreReleases(enabled: Boolean) = Unit
+
+        override suspend fun setCheckUpdatesOnStartup(enabled: Boolean) = Unit
+
+        override suspend fun updateLastUpdateCheckTimestamp(epochMillis: Long) = Unit
     }
 
     private companion object {

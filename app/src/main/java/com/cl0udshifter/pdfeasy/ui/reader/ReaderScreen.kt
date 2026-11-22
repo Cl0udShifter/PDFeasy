@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -42,16 +43,21 @@ fun ReaderScreen(
     viewModel: ReaderViewModel,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenSettings: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var viewportWidthPx by remember { mutableIntStateOf(0) }
 
-    ObserveReaderLifecycle(viewModel = viewModel)
+    ObserveReaderLifecycle(viewModel = viewModel, keepScreenOn = uiState.keepScreenOn)
     BackHandler(enabled = uiState.search.isOpen) { viewModel.closeSearch() }
 
     val hudCallbacks =
-        remember(viewModel, onNavigateBack) {
-            buildReaderHudCallbacks(viewModel = viewModel, onNavigateBack = onNavigateBack)
+        remember(viewModel, onNavigateBack, onOpenSettings) {
+            buildReaderHudCallbacks(
+                viewModel = viewModel,
+                onNavigateBack = onNavigateBack,
+                onOpenSettings = onOpenSettings,
+            )
         }
 
     val extendedColors = PdfEasyThemeTokens.colors
@@ -77,8 +83,19 @@ fun ReaderScreen(
 }
 
 @Composable
-private fun ObserveReaderLifecycle(viewModel: ReaderViewModel) {
+private fun ObserveReaderLifecycle(
+    viewModel: ReaderViewModel,
+    keepScreenOn: Boolean,
+) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val hostView = LocalView.current
+
+    DisposableEffect(hostView, keepScreenOn) {
+        val previous = hostView.keepScreenOn
+        hostView.keepScreenOn = keepScreenOn
+        onDispose { hostView.keepScreenOn = previous }
+    }
+
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer =
             LifecycleEventObserver { _, event ->
@@ -199,6 +216,7 @@ private fun ReaderLoadingContent() {
 private fun buildReaderHudCallbacks(
     viewModel: ReaderViewModel,
     onNavigateBack: () -> Unit,
+    onOpenSettings: () -> Unit,
 ): ReaderHudCallbacks =
     ReaderHudCallbacks(
         onBackClick = {
@@ -206,6 +224,7 @@ private fun buildReaderHudCallbacks(
             onNavigateBack()
         },
         onOpenBookmarksSheet = viewModel::openBookmarksSheet,
+        onOpenSettings = onOpenSettings,
         onSelectRenderTheme = viewModel::setRenderTheme,
         onToggleScrollMode = viewModel::toggleScrollMode,
         onJumpToPage = viewModel::jumpToPage,

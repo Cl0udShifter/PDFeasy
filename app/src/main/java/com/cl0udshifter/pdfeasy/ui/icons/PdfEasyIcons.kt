@@ -43,6 +43,12 @@ object PdfEasyIcons {
 
     @DrawableRes val VisibilityOff: Int = R.drawable.ic_visibility_off
 
+    @DrawableRes val Settings: Int = R.drawable.ic_settings
+
+    @DrawableRes val Download: Int = R.drawable.ic_download
+
+    @DrawableRes val Check: Int = R.drawable.ic_check
+
     @Composable
     fun painter(
         @DrawableRes iconRes: Int,

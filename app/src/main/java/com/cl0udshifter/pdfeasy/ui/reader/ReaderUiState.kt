@@ -44,6 +44,7 @@ data class ReaderUiState(
     val zoomScale: Float = 1f,
     val scrollMode: ScrollMode = ScrollMode.CONTINUOUS_VERTICAL,
     val renderTheme: PageRenderTheme = PageRenderTheme.ORIGINAL,
+    val keepScreenOn: Boolean = false,
     val hudVisible: Boolean = true,
     val isCurrentPageBookmarked: Boolean = false,
     val bookmarks: List<Bookmark> = emptyList(),

@@ -69,4 +69,67 @@
     <string name="reader_error_io">Falha de leitura ao acessar o armazenamento.</string>
     <string name="reader_error_back">Voltar à biblioteca</string>
     <string name="reader_loading">Abrindo documento…</string>
+
+    <!-- Configuracoes e atualizacoes -->
+    <string name="settings_open">Abrir configurações</string>
+    <string name="settings_back">Voltar</string>
+    <string name="settings_title">Configurações</string>
+
+    <string name="settings_section_appearance">Aparência</string>
+    <string name="settings_app_theme_label">Tema do aplicativo</string>
+    <string name="settings_app_theme_desc">Define o visual da biblioteca, das folhas e dos menus</string>
+    <string name="settings_theme_system">Sistema</string>
+    <string name="settings_theme_light">Claro</string>
+    <string name="settings_theme_dark">Escuro</string>
+
+    <string name="settings_section_reader_defaults">Padrões de leitura</string>
+    <string name="settings_defaults_hint">Aplicados ao abrir novos documentos sem histórico salvo</string>
+    <string name="settings_default_render_theme_label">Tema padrão da página</string>
+    <string name="settings_default_scroll_mode_label">Direção de rolagem</string>
+    <string name="settings_scroll_vertical">Vertical</string>
+    <string name="settings_scroll_horizontal">Horizontal</string>
+    <string name="settings_default_zoom_label">Zoom inicial padrão</string>
+    <string name="settings_default_zoom_format">%1$.1fx</string>
+    <string name="settings_keep_screen_on_label">Manter tela acesa</string>
+    <string name="settings_keep_screen_on_desc">Impede que a tela apague enquanto você lê um PDF</string>
+
+    <string name="settings_section_about_updates">Sobre e atualizações</string>
+    <string name="settings_installed_version_label">Versão instalada</string>
+    <string name="settings_installed_version_format">v%1$s (build %2$d)</string>
+    <string name="settings_last_check_label">Última verificação</string>
+    <string name="settings_last_check_never">Nunca verificado</string>
+    <string name="settings_include_prereleases_label">Incluir pre-releases</string>
+    <string name="settings_include_prereleases_desc">Receber versões antecipadas publicadas no GitHub</string>
+    <string name="settings_check_startup_label">Verificar ao iniciar</string>
+    <string name="settings_check_startup_desc">Consulta o GitHub apenas quando você abre o aplicativo</string>
+    <string name="settings_check_updates_action">Verificar atualizações</string>
+    <string name="settings_checking_updates">Verificando no GitHub…</string>
+    <string name="settings_up_to_date_format">Você já está na versão mais recente (%1$s).</string>
+    <string name="settings_update_available_title">Nova atualização disponível</string>
+    <string name="settings_update_prerelease_badge">Pre-release</string>
+    <string name="settings_update_notes_show">Ver notas da versão</string>
+    <string name="settings_update_notes_hide">Ocultar notas</string>
+    <string name="settings_update_sha256_available">Integridade protegida por SHA-256</string>
+    <string name="settings_update_download_install">Baixar e instalar</string>
+    <string name="settings_update_downloading">Baixando pacote de atualização…</string>
+    <string name="settings_update_downloading_indeterminate">Baixando atualização…</string>
+    <string name="settings_update_ready_title">Atualização pronta para instalar</string>
+    <string name="settings_update_sha256_verified">Assinatura SHA-256 verificada</string>
+    <string name="settings_update_sha256_unverified">Concluído sem hash SHA-256 na release</string>
+    <string name="settings_update_install_now">Instalar agora</string>
+    <string name="settings_update_permission_needed">Autorize o PDFeasy a instalar atualizações nas configurações do Android para continuar.</string>
+    <string name="settings_update_grant_permission">Permitir instalação</string>
+    <string name="settings_update_clear_cache">Limpar cache de atualizações</string>
+    <string name="settings_update_cache_cleared">Cache de atualizações limpo.</string>
+    <string name="settings_update_installer_unavailable">Nenhum instalador de pacotes disponível neste dispositivo.</string>
+    <string name="settings_update_retry">Tentar novamente</string>
+
+    <string name="settings_update_error_network">Sem conexão com a internet. Verifique sua rede e tente novamente.</string>
+    <string name="settings_update_error_rate_limited">Limite de consultas do GitHub atingido. Aguarde antes de tentar novamente.</string>
+    <string name="settings_update_error_rate_limited_seconds">Limite de consultas do GitHub atingido. Tente novamente em %1$d s.</string>
+    <string name="settings_update_error_http">Falha na consulta ao GitHub (HTTP %1$d).</string>
+    <string name="settings_update_error_no_apk">Nenhum APK compatível foi encontrado nesta release.</string>
+    <string name="settings_update_error_checksum">O arquivo baixado falhou na verificação de integridade SHA-256.</string>
+    <string name="settings_update_error_invalid_response">Resposta inesperada recebida da API de releases.</string>
+    <string name="settings_update_error_storage">Não foi possível gravar ou acessar o arquivo temporário da atualização.</string>
 </resources>

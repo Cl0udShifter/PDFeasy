@@ -53,6 +53,7 @@ private object LibraryScreenDimens {
 @Immutable
 data class LibraryScreenCallbacks(
     val onOpenPdfClick: () -> Unit,
+    val onSettingsClick: () -> Unit = {},
     val onSearchQueryChange: (String) -> Unit,
     val onClearSearch: () -> Unit,
     val onFilterSelected: (LibraryFilter) -> Unit,
@@ -65,6 +66,8 @@ fun LibraryScreen(
     viewModel: LibraryViewModel,
     onNavigateToReader: (documentId: String, uriString: String, displayName: String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenSettings: () -> Unit = {},
+    hasUpdateAvailable: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -96,7 +99,7 @@ fun LibraryScreen(
         openDocumentLauncher.launch(arrayOf(LibraryScreenDimens.PDF_MIME_TYPE))
     }
 
-    val callbacks = rememberLibraryCallbacks(viewModel = viewModel, onOpenPdf = launchNewPdfPicker)
+    val callbacks = rememberLibraryCallbacks(viewModel, launchNewPdfPicker, onOpenSettings)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -108,35 +111,52 @@ fun LibraryScreen(
             uiState = uiState,
             callbacks = callbacks,
             modifier = Modifier.padding(innerPadding),
+            hasUpdateAvailable = hasUpdateAvailable,
         )
     }
 
-    uiState.selectedDocumentForSheet?.let { sheetItem ->
-        DocumentActionsSheet(
-            item = sheetItem,
-            onDismiss = viewModel::dismissDocumentSheet,
-            onOpenClick = {
-                viewModel.dismissDocumentSheet()
-                viewModel.onDocumentClicked(sheetItem)
-            },
-            onRelinkClick = {
-                pendingRelinkDocumentId = sheetItem.document.id
-                viewModel.dismissDocumentSheet()
-                openDocumentLauncher.launch(arrayOf(LibraryScreenDimens.PDF_MIME_TYPE))
-            },
-            onRemoveClick = { viewModel.removeFromLibrary(sheetItem.document.id) },
-        )
-    }
+    LibraryDocumentSheetHost(
+        sheetItem = uiState.selectedDocumentForSheet,
+        viewModel = viewModel,
+        onRelink = { docId ->
+            pendingRelinkDocumentId = docId
+            openDocumentLauncher.launch(arrayOf(LibraryScreenDimens.PDF_MIME_TYPE))
+        },
+    )
+}
+
+@Composable
+private fun LibraryDocumentSheetHost(
+    sheetItem: LibraryItemWithProgress?,
+    viewModel: LibraryViewModel,
+    onRelink: (String) -> Unit,
+) {
+    if (sheetItem == null) return
+    DocumentActionsSheet(
+        item = sheetItem,
+        onDismiss = viewModel::dismissDocumentSheet,
+        onOpenClick = {
+            viewModel.dismissDocumentSheet()
+            viewModel.onDocumentClicked(sheetItem)
+        },
+        onRelinkClick = {
+            viewModel.dismissDocumentSheet()
+            onRelink(sheetItem.document.id)
+        },
+        onRemoveClick = { viewModel.removeFromLibrary(sheetItem.document.id) },
+    )
 }
 
 @Composable
 private fun rememberLibraryCallbacks(
     viewModel: LibraryViewModel,
     onOpenPdf: () -> Unit,
+    onOpenSettings: () -> Unit,
 ): LibraryScreenCallbacks =
-    remember(viewModel, onOpenPdf) {
+    remember(viewModel, onOpenPdf, onOpenSettings) {
         LibraryScreenCallbacks(
             onOpenPdfClick = onOpenPdf,
+            onSettingsClick = onOpenSettings,
             onSearchQueryChange = viewModel::onSearchQueryChange,
             onClearSearch = viewModel::onClearSearch,
             onFilterSelected = viewModel::onFilterSelected,
@@ -186,6 +206,7 @@ fun LibraryScreenContent(
     uiState: LibraryUiState,
     callbacks: LibraryScreenCallbacks,
     modifier: Modifier = Modifier,
+    hasUpdateAvailable: Boolean = false,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val isExpanded = maxWidth >= LibraryScreenDimens.CompactBreakpoint
@@ -205,6 +226,8 @@ fun LibraryScreenContent(
         Column(modifier = Modifier.fillMaxSize()) {
             LibraryHeader(
                 onOpenPdfClick = callbacks.onOpenPdfClick,
+                onSettingsClick = callbacks.onSettingsClick,
+                hasUpdateAvailable = hasUpdateAvailable,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalMargin),
             )
             if (uiState.isCompletelyEmpty) {

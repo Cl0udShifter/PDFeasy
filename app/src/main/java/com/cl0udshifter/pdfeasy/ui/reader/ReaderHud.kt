@@ -94,6 +94,7 @@ private object HudDimens {
 data class ReaderHudCallbacks(
     val onBackClick: () -> Unit,
     val onOpenBookmarksSheet: () -> Unit,
+    val onOpenSettings: () -> Unit = {},
     val onSelectRenderTheme: (PageRenderTheme) -> Unit,
     val onToggleScrollMode: () -> Unit,
     val onJumpToPage: (Int) -> Unit,
@@ -120,11 +121,9 @@ fun BoxScope.ReaderHudOverlay(
         modifier = Modifier.align(Alignment.TopCenter),
     ) {
         ReaderTopBar(
-            displayName = uiState.displayName,
-            currentPageIndex = uiState.currentPageIndex,
-            pageCount = uiState.pageCount,
-            hasBookmarks = uiState.bookmarks.isNotEmpty(),
+            uiState = uiState,
             onOpenBookmarksSheet = callbacks.onOpenBookmarksSheet,
+            onOpenSettings = callbacks.onOpenSettings,
         )
     }
 
@@ -140,11 +139,9 @@ fun BoxScope.ReaderHudOverlay(
 
 @Composable
 private fun ReaderTopBar(
-    displayName: String,
-    currentPageIndex: Int,
-    pageCount: Int,
-    hasBookmarks: Boolean,
+    uiState: ReaderUiState,
     onOpenBookmarksSheet: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Row(
         modifier =
@@ -155,14 +152,42 @@ private fun ReaderTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ReaderTopTitlePill(displayName = displayName, modifier = Modifier.weight(1f, fill = false))
+        ReaderTopTitlePill(displayName = uiState.displayName, modifier = Modifier.weight(1f, fill = false))
         Spacer(modifier = Modifier.width(HudDimens.TopGap))
-        ReaderTopPagePill(
-            currentPageIndex = currentPageIndex,
-            pageCount = pageCount,
-            hasBookmarks = hasBookmarks,
-            onOpenBookmarksSheet = onOpenBookmarksSheet,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(HudDimens.SwatchGap),
+        ) {
+            ReaderTopPagePill(
+                currentPageIndex = uiState.currentPageIndex,
+                pageCount = uiState.pageCount,
+                hasBookmarks = uiState.bookmarks.isNotEmpty(),
+                onOpenBookmarksSheet = onOpenBookmarksSheet,
+            )
+            ReaderTopSettingsPill(onClick = onOpenSettings)
+        }
+    }
+}
+
+@Composable
+private fun ReaderTopSettingsPill(onClick: () -> Unit) {
+    val settingsDesc = stringResource(R.string.settings_open)
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = HudDimens.PILL_SURFACE_ALPHA),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = HudDimens.TopElevation,
+        modifier = Modifier.size(HudDimens.PillMinHeight).semantics { contentDescription = settingsDesc },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = PdfEasyIcons.painter(PdfEasyIcons.Settings),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(HudDimens.IconSize),
+            )
+        }
     }
 }
 
