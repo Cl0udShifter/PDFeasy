@@ -136,6 +136,104 @@ sealed interface CoreResult<out T> {
 }
 ```
 
+### 1.6. Configurações Globais (`AppSettings`, `AppThemeMode`)
+Configurações persistidas em Preferences DataStore para a tela de Configurações e valores padrão ao abrir documentos sem progresso salvo.
+
+```kotlin
+package com.cl0udshifter.pdfeasy.core.model
+
+enum class AppThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK
+}
+
+data class AppSettings(
+    val appTheme: AppThemeMode = AppThemeMode.SYSTEM,
+    val defaultRenderTheme: PageRenderTheme = PageRenderTheme.ORIGINAL,
+    val defaultScrollMode: ScrollMode = ScrollMode.CONTINUOUS_VERTICAL,
+    val defaultZoomScale: Float = DEFAULT_ZOOM_SCALE, // Limitado entre 1.0f e 3.0f
+    val keepScreenOn: Boolean = false,
+    val includePreReleases: Boolean = true,
+    val checkUpdatesOnStartup: Boolean = false,
+    val lastUpdateCheckEpochMillis: Long? = null
+) {
+    companion object {
+        const val MIN_DEFAULT_ZOOM = 1.0f
+        const val MAX_DEFAULT_ZOOM = 3.0f
+        const val DEFAULT_ZOOM_SCALE = 1.0f
+    }
+}
+```
+
+### 1.7. Atualizações via Releases do GitHub (`AppReleaseInfo`, `AppUpdateStatus`, `AppUpdateError`, `AppUpdateDownloadState`)
+Modelos retornados pela verificação e download de APKs publicados em `Cl0udShifter/PDFeasy`.
+
+```kotlin
+package com.cl0udshifter.pdfeasy.core.model
+
+data class AppReleaseInfo(
+    val tagName: String,
+    val versionName: String,
+    val releaseName: String,
+    val releaseNotes: String,
+    val htmlUrl: String,
+    val publishedAtIso: String,
+    val isPreRelease: Boolean,
+    val apkAssetName: String,
+    val apkDownloadUrl: String,
+    val apkSizeBytes: Long,
+    val expectedSha256: String?
+)
+
+sealed interface AppUpdateStatus {
+    data class UpToDate(
+        val currentVersionName: String,
+        val latestCheckedTag: String?
+    ) : AppUpdateStatus
+
+    data class UpdateAvailable(
+        val currentVersionName: String,
+        val release: AppReleaseInfo
+    ) : AppUpdateStatus
+}
+
+sealed interface AppUpdateError {
+    data object NetworkUnavailable : AppUpdateError
+    data class RateLimited(val retryAfterSeconds: Long?) : AppUpdateError
+    data class HttpFailure(val statusCode: Int, val message: String) : AppUpdateError
+    data object NoCompatibleApkAsset : AppUpdateError
+    data class ChecksumMismatch(val expectedSha256: String, val actualSha256: String) : AppUpdateError
+    data class InvalidResponse(val reason: String) : AppUpdateError
+    data class StorageFailure(val message: String) : AppUpdateError
+}
+
+sealed interface AppUpdateCheckResult {
+    data class Success(val status: AppUpdateStatus) : AppUpdateCheckResult
+    data class Failure(val error: AppUpdateError) : AppUpdateCheckResult
+}
+
+sealed interface AppUpdateDownloadState {
+    data object Idle : AppUpdateDownloadState
+
+    data class Downloading(
+        val downloadedBytes: Long,
+        val totalBytes: Long
+    ) : AppUpdateDownloadState {
+        val progressFraction: Float?
+            get() = if (totalBytes <= 0L) null else (downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+    }
+
+    data class ReadyToInstall(
+        val release: AppReleaseInfo,
+        val contentUriString: String, // URI FileProvider pronta para ACTION_VIEW (application/vnd.android.package-archive)
+        val sha256Verified: Boolean
+    ) : AppUpdateDownloadState
+
+    data class Failed(val error: AppUpdateError) : AppUpdateDownloadState
+}
+```
+
 ---
 
 ## 2. Interfaces Expostas para a UI (`core.domain` & `core.pdf`)
@@ -306,11 +404,86 @@ interface BookmarkRepository {
 }
 ```
 
+### 2.5. Repositório de Configurações (`SettingsRepository`)
+Gerencia preferências globais do app e padrões iniciais do leitor no Preferences DataStore (compartilhando o mesmo armazenamento de `ReaderPreferencesStore`).
+
+```kotlin
+package com.cl0udshifter.pdfeasy.core.domain
+
+import com.cl0udshifter.pdfeasy.core.model.AppSettings
+import com.cl0udshifter.pdfeasy.core.model.AppThemeMode
+import com.cl0udshifter.pdfeasy.core.model.PageRenderTheme
+import com.cl0udshifter.pdfeasy.core.model.ScrollMode
+import kotlinx.coroutines.flow.Flow
+
+interface SettingsRepository {
+    fun observeSettings(): Flow<AppSettings>
+
+    suspend fun getSettings(): AppSettings
+
+    suspend fun setAppTheme(theme: AppThemeMode)
+
+    suspend fun setDefaultRenderTheme(theme: PageRenderTheme)
+
+    suspend fun setDefaultScrollMode(scrollMode: ScrollMode)
+
+    suspend fun setDefaultZoomScale(zoomScale: Float)
+
+    suspend fun setKeepScreenOn(enabled: Boolean)
+
+    suspend fun setIncludePreReleases(enabled: Boolean)
+
+    suspend fun setCheckUpdatesOnStartup(enabled: Boolean)
+
+    suspend fun updateLastUpdateCheckTimestamp(epochMillis: Long)
+}
+```
+
+### 2.6. Repositório de Atualizações via GitHub (`AppUpdateRepository`)
+Consulta as releases de `Cl0udShifter/PDFeasy` sob demanda, compara versões SemVer, baixa o `.apk` no cache privado com progresso em `Flow`, valida SHA-256 (quando fornecido pela API do GitHub) e expõe URI via `FileProvider`.
+
+```kotlin
+package com.cl0udshifter.pdfeasy.core.domain
+
+import com.cl0udshifter.pdfeasy.core.model.AppReleaseInfo
+import com.cl0udshifter.pdfeasy.core.model.AppUpdateCheckResult
+import com.cl0udshifter.pdfeasy.core.model.AppUpdateDownloadState
+import kotlinx.coroutines.flow.Flow
+
+interface AppUpdateRepository {
+    val currentVersionName: String
+    val currentVersionCode: Long
+
+    /**
+     * Consulta a API de releases do GitHub (incluindo ou nao pre-releases), compara SemVer
+     * contra currentVersionName e persiste o timestamp da ultima verificacao em SettingsRepository.
+     */
+    suspend fun checkForUpdate(includePreReleases: Boolean): AppUpdateCheckResult
+
+    /**
+     * Baixa o APK para cache privado (cache/updates/), valida SHA-256 se expectedSha256 != null
+     * e emite ReadyToInstall com URI FileProvider pronta para o instalador do Android.
+     */
+    fun downloadUpdate(release: AppReleaseInfo): Flow<AppUpdateDownloadState>
+
+    /**
+     * Indica se o usuario ja concedeu permissao para instalar pacotes desconhecidos (API 26+).
+     */
+    fun canRequestPackageInstalls(): Boolean
+
+    /**
+     * Remove APKs de atualizacao armazenados no cache privado do app.
+     */
+    suspend fun clearCachedUpdates()
+}
+```
+
 ---
 
 ## 3. Invariantes da Camada Core
 
-1. **Zero Bloqueio na Main Thread:** Todos os métodos `suspend` e fluxos (`Flow`) que acessam `ContentResolver`, `Room` ou `PdfSession` executam em `Dispatchers.IO` ou em um dispatcher dedicado de thread única por sessão de PDF (quando exigido pela sincronização nativa do motor PDF).
+1. **Zero Bloqueio na Main Thread:** Todos os métodos `suspend` e fluxos (`Flow`) que acessam `ContentResolver`, `Room`, `DataStore`, rede ou `PdfSession` executam em `Dispatchers.IO` ou em um dispatcher dedicado de thread única por sessão de PDF (quando exigido pela sincronização nativa do motor PDF).
 2. **Índices Base-0:** `pageIndex` e `currentPageIndex` são sempre baseados em zero (`0 until pageCount`). A conversão para exibição (`pageIndex + 1`) ocorre exclusivamente na camada de UI.
 3. **Coordenadas Normalizadas (`0.0f..1.0f`):** `scrollOffsetNormalized`, `TileRequest.cropNormalized` e `TextSearchMatch.boundsNormalized` são independentes da densidade de pixels (DPI) e do nível de zoom atual da tela.
 4. **Temas na GPU:** `PageRenderTheme` (`ORIGINAL`, `DARK`, `SEPIA`) é persistido no Core, mas aplicado pela UI no `DrawScope` / `Paint` via `ColorMatrixColorFilter`, mantendo os bitmaps do cache em formato original para troca instantânea de tema sem re-renderizar páginas.
+5. **Rede Zero Telemetria e Integridade de Atualização:** O app não faz requisições em background sem ação do usuário (ou opção `checkUpdatesOnStartup` explicitamente ativada). Downloads de APK exigem esquema `https://` em produção, limpam arquivos antigos em `cache/updates/` e validam SHA-256 obrigatoriamente quando o digest é informado pela API do GitHub.

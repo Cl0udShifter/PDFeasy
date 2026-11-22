@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
-private val Context.readerPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
+internal val Context.readerPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "reader_preferences",
 )
 

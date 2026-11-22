@@ -1,6 +1,7 @@
 package com.cl0udshifter.pdfeasy
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -10,6 +11,7 @@ import com.cl0udshifter.pdfeasy.core.data.local.PdfEasyDatabase
 import com.cl0udshifter.pdfeasy.core.data.local.ReadingProgressEntity
 import com.cl0udshifter.pdfeasy.core.data.preferences.DataStoreReaderPreferences
 import com.cl0udshifter.pdfeasy.core.data.preferences.ReaderDefaults
+import com.cl0udshifter.pdfeasy.core.data.update.AndroidApkCacheStorage
 import com.cl0udshifter.pdfeasy.core.model.PageRenderTheme
 import com.cl0udshifter.pdfeasy.core.model.ScrollMode
 import com.cl0udshifter.pdfeasy.core.pdf.AndroidBitmapPool
@@ -175,6 +177,37 @@ class PdfEasyDatabaseAndAndroidTest {
         assertNotNull(container.readingProgressRepository)
         assertNotNull(container.bookmarkRepository)
         assertNotNull(container.readerPreferences)
+        assertNotNull(container.settingsRepository)
+        assertNotNull(container.appUpdateRepository)
         assertNotNull(container.pdfEngine)
+        assertEquals("0.1.1", container.appUpdateRepository.currentVersionName)
+        assertEquals(2L, container.appUpdateRepository.currentVersionCode)
+    }
+
+    @Test
+    fun androidApkCacheStorageSanitizesAndClearsAndManifestRegistersFileProvider() {
+        val providerInfo =
+            context.packageManager.resolveContentProvider(
+                "${context.packageName}.fileprovider",
+                PackageManager.GET_META_DATA,
+            )
+        assertNotNull(providerInfo)
+        assertNotNull(providerInfo?.metaData?.getInt("android.support.FILE_PROVIDER_PATHS"))
+
+        val storage =
+            AndroidApkCacheStorage(context) { appCtx, file ->
+                "content://${appCtx.packageName}.fileprovider/apk_updates/${file.name}"
+            }
+        val partFile = storage.preparePartFile("../unsafe/PDFeasy-v0.1.2.apk")
+        assertEquals("PDFeasy-v0.1.2.apk.part", partFile.name)
+        partFile.writeBytes(byteArrayOf(1, 2, 3))
+
+        val finalFile = storage.finalizeApkFile(partFile, "PDFeasy-v0.1.2.apk")
+        val uri = storage.contentUriForFile(finalFile)
+        assertTrue(uri.startsWith("content://com.cl0udshifter.pdfeasy.fileprovider/apk_updates/"))
+        assertTrue(finalFile.exists())
+
+        storage.clearAll()
+        assertFalse(finalFile.exists())
     }
 }
