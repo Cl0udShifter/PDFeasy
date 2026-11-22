@@ -1,7 +1,13 @@
 package com.cl0udshifter.pdfeasy.ui.reader
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.cl0udshifter.pdfeasy.core.model.NormalizedRect
@@ -29,6 +36,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 private object ViewportConstants {
     val PageGapDp = 10.dp
+    val VerticalTopHudClearanceDp = 62.dp
+    val VerticalBottomHudClearanceDp = 124.dp
+    val HorizontalEdgePaddingDp = 12.dp
     val MatchStrokeWidthDp = 1.5.dp
     const val HEX_PLACEHOLDER_DARK = 0xFF181817
     const val HEX_PLACEHOLDER_SEPIA = 0xFFF4EAD5
@@ -114,7 +124,21 @@ private fun rememberViewportBaseSpec(
     motionState: ViewportMotionState,
 ): PageLayoutSpec {
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
     val pageSpacingPx = with(density) { ViewportConstants.PageGapDp.toPx() }
+    val topSafeInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout)
+    val bottomSafeInsets = WindowInsets.navigationBars.union(WindowInsets.displayCutout)
+    val horizontalSafeInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    val (mainPaddingStartPx, mainPaddingEndPx) =
+        if (params.scrollMode == ScrollMode.CONTINUOUS_VERTICAL) {
+            val topHudPx = with(density) { ViewportConstants.VerticalTopHudClearanceDp.toPx() }
+            val bottomHudPx = with(density) { ViewportConstants.VerticalBottomHudClearanceDp.toPx() }
+            (topSafeInsets.getTop(density) + topHudPx) to (bottomSafeInsets.getBottom(density) + bottomHudPx)
+        } else {
+            val sidePadPx = with(density) { ViewportConstants.HorizontalEdgePaddingDp.toPx() }
+            (horizontalSafeInsets.getLeft(density, layoutDirection) + sidePadPx) to
+                (horizontalSafeInsets.getRight(density, layoutDirection) + sidePadPx)
+        }
     return remember(
         params.pageCount,
         params.pageDimensions,
@@ -122,6 +146,8 @@ private fun rememberViewportBaseSpec(
         motionState.viewportHeightPx,
         params.scrollMode,
         pageSpacingPx,
+        mainPaddingStartPx,
+        mainPaddingEndPx,
     ) {
         PageLayoutSpec(
             pageCount = params.pageCount,
@@ -131,6 +157,8 @@ private fun rememberViewportBaseSpec(
             pageSpacingPx = pageSpacingPx,
             zoomScale = ReaderViewModel.MIN_ZOOM,
             scrollMode = params.scrollMode,
+            mainPaddingStartPx = mainPaddingStartPx,
+            mainPaddingEndPx = mainPaddingEndPx,
         )
     }
 }

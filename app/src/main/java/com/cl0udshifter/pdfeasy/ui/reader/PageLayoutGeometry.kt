@@ -25,6 +25,8 @@ data class PageLayoutSpec(
     val pageSpacingPx: Float,
     val zoomScale: Float,
     val scrollMode: ScrollMode,
+    val mainPaddingStartPx: Float = 0f,
+    val mainPaddingEndPx: Float = 0f,
 )
 
 class PageGeometryArrays(
@@ -49,6 +51,12 @@ class PageLayoutSnapshot(
     val pageSpacingPx: Float get() = spec.pageSpacingPx
     val zoomScale: Float get() = spec.zoomScale
     val scrollMode: ScrollMode get() = spec.scrollMode
+    val mainPaddingStartPx: Float get() = spec.mainPaddingStartPx
+    val mainPaddingEndPx: Float get() = spec.mainPaddingEndPx
+    val viewportMainPx: Float
+        get() = if (scrollMode == ScrollMode.CONTINUOUS_VERTICAL) viewportHeightPx else viewportWidthPx
+    val usableMainPx: Float
+        get() = (viewportMainPx - mainPaddingStartPx - mainPaddingEndPx).coerceAtLeast(0f)
     val pageStartsMainPx: FloatArray get() = arrays.startsMainPx
     val pageEndsMainPx: FloatArray get() = arrays.endsMainPx
     val pageWidthsPx: FloatArray get() = arrays.widthsPx
@@ -87,9 +95,7 @@ class PageLayoutSnapshot(
 
     fun currentPageIndex(scrollMainPx: Float): Int {
         if (pageCount <= 0) return 0
-        val viewportMain =
-            if (scrollMode == ScrollMode.CONTINUOUS_VERTICAL) viewportHeightPx else viewportWidthPx
-        val centerMain = scrollMainPx + viewportMain * HALF
+        val centerMain = scrollMainPx + mainPaddingStartPx + usableMainPx * HALF
         var index = findLastPageStartingBefore(centerMain).coerceIn(0, pageCount - 1)
         if (index + 1 < pageCount) {
             val currentDist = abs(centerMain - (pageStartsMainPx[index] + pageEndsMainPx[index]) * HALF)
@@ -108,7 +114,7 @@ class PageLayoutSnapshot(
         if (pageIndex !in 0 until pageCount) return 0f
         val start = pageStartsMainPx[pageIndex]
         val extent = (pageEndsMainPx[pageIndex] - start).coerceAtLeast(1f)
-        return ((scrollMainPx - start) / extent).coerceIn(0f, 1f)
+        return ((scrollMainPx + mainPaddingStartPx - start) / extent).coerceIn(0f, 1f)
     }
 
     fun scrollMainForPage(
@@ -119,7 +125,8 @@ class PageLayoutSnapshot(
         val safePage = pageIndex.coerceIn(0, pageCount - 1)
         val start = pageStartsMainPx[safePage]
         val extent = pageEndsMainPx[safePage] - start
-        return (start + extent * normalizedOffset.coerceIn(0f, 1f)).coerceIn(0f, maxScrollMainPx)
+        return (start + extent * normalizedOffset.coerceIn(0f, 1f) - mainPaddingStartPx)
+            .coerceIn(0f, maxScrollMainPx)
     }
 
     fun pageScreenRect(
@@ -260,9 +267,28 @@ class PageLayoutSnapshot(
                 }
             }
 
+            val viewportMain =
+                if (spec.scrollMode == ScrollMode.CONTINUOUS_VERTICAL) {
+                    spec.viewportHeightPx
+                } else {
+                    spec.viewportWidthPx
+                }
+            val usableMain = (viewportMain - spec.mainPaddingStartPx - spec.mainPaddingEndPx).coerceAtLeast(0f)
+            val leadingOffset =
+                if (spec.pageCount > 0 && cursor < usableMain) {
+                    spec.mainPaddingStartPx + (usableMain - cursor) * HALF
+                } else {
+                    spec.mainPaddingStartPx
+                }
+            for (index in 0 until spec.pageCount) {
+                starts[index] += leadingOffset
+                ends[index] += leadingOffset
+            }
+            val totalExtent = if (spec.pageCount > 0) leadingOffset + cursor + spec.mainPaddingEndPx else 0f
+
             return PageLayoutSnapshot(
                 spec = spec,
-                arrays = PageGeometryArrays(starts, ends, widths, heights, cursor, maxCross),
+                arrays = PageGeometryArrays(starts, ends, widths, heights, totalExtent, maxCross),
             )
         }
     }
@@ -289,14 +315,14 @@ private fun computeCenteredMatchScroll(
     val pageStart = snapshot.pageStartsMainPx[pageIndex]
 
     return if (snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL) {
-        val targetMain = (pageStart + centerYNorm * pageHeight - snapshot.viewportHeightPx * PageLayoutSnapshot.HALF)
-            .coerceIn(0f, snapshot.maxScrollMainPx)
+        val centerY = snapshot.mainPaddingStartPx + snapshot.usableMainPx * PageLayoutSnapshot.HALF
+        val targetMain = (pageStart + centerYNorm * pageHeight - centerY).coerceIn(0f, snapshot.maxScrollMainPx)
         val targetCross = (centerXNorm * pageWidth - snapshot.viewportWidthPx * PageLayoutSnapshot.HALF)
             .coerceIn(0f, snapshot.maxScrollCrossPx)
         targetMain to targetCross
     } else {
-        val targetMain = (pageStart + centerXNorm * pageWidth - snapshot.viewportWidthPx * PageLayoutSnapshot.HALF)
-            .coerceIn(0f, snapshot.maxScrollMainPx)
+        val centerX = snapshot.mainPaddingStartPx + snapshot.usableMainPx * PageLayoutSnapshot.HALF
+        val targetMain = (pageStart + centerXNorm * pageWidth - centerX).coerceIn(0f, snapshot.maxScrollMainPx)
         val targetCross = (centerYNorm * pageHeight - snapshot.viewportHeightPx * PageLayoutSnapshot.HALF)
             .coerceIn(0f, snapshot.maxScrollCrossPx)
         targetMain to targetCross

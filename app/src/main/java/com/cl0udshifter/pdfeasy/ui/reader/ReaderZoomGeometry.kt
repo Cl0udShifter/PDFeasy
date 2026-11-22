@@ -28,15 +28,10 @@ object ReaderZoomMath {
     ): Float {
         if (baseSnapshot.pageCount <= 0) return 0f
         val scale = zoomScale / baseSnapshot.zoomScale.coerceAtLeast(MIN_SAFE_ZOOM)
-        val totalGaps = (baseSnapshot.pageCount - 1).coerceAtLeast(0) * baseSnapshot.pageSpacingPx
-        val totalMainAtZoom = (baseSnapshot.totalMainExtentPx - totalGaps) * scale + totalGaps
-        val viewportMain =
-            if (baseSnapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL) {
-                baseSnapshot.viewportHeightPx
-            } else {
-                baseSnapshot.viewportWidthPx
-            }
-        return (totalMainAtZoom - viewportMain).coerceAtLeast(0f)
+        val scaledPagesExtent = pagesExtentAtScale(baseSnapshot, scale)
+        val leading = leadingOffsetAtScale(baseSnapshot, scaledPagesExtent)
+        val totalMainAtZoom = leading + scaledPagesExtent + baseSnapshot.mainPaddingEndPx
+        return (totalMainAtZoom - baseSnapshot.viewportMainPx).coerceAtLeast(0f)
     }
 
     fun scaledMaxScrollCross(
@@ -66,13 +61,18 @@ object ReaderZoomMath {
         val zOld = input.oldZoom / baseZoom
         val zNew = input.newZoom / baseZoom
         val gap = baseSnapshot.pageSpacingPx
+        val leadingOld = leadingOffsetAtScale(baseSnapshot, pagesExtentAtScale(baseSnapshot, zOld))
+        val leadingNew = leadingOffsetAtScale(baseSnapshot, pagesExtentAtScale(baseSnapshot, zNew))
+        val baseAnchor = baseSnapshot.pageStartsMainPx[0]
 
         val docMainOld = input.oldScrollMainPx + input.centroidMainPx
-        val pageIndex = findPageIndexAtScaledOffset(baseSnapshot, docMainOld, zOld)
-        val startOld = (baseSnapshot.pageStartsMainPx[pageIndex] - pageIndex * gap) * zOld + pageIndex * gap
-        val endOld = (baseSnapshot.pageEndsMainPx[pageIndex] - pageIndex * gap) * zOld + pageIndex * gap
-        val startNew = (baseSnapshot.pageStartsMainPx[pageIndex] - pageIndex * gap) * zNew + pageIndex * gap
-        val endNew = (baseSnapshot.pageEndsMainPx[pageIndex] - pageIndex * gap) * zNew + pageIndex * gap
+        val pageIndex = findPageIndexAtScaledOffset(baseSnapshot, docMainOld, zOld, leadingOld)
+        val relStart = (baseSnapshot.pageStartsMainPx[pageIndex] - baseAnchor) - pageIndex * gap
+        val relEnd = (baseSnapshot.pageEndsMainPx[pageIndex] - baseAnchor) - pageIndex * gap
+        val startOld = leadingOld + relStart * zOld + pageIndex * gap
+        val endOld = leadingOld + relEnd * zOld + pageIndex * gap
+        val startNew = leadingNew + relStart * zNew + pageIndex * gap
+        val endNew = leadingNew + relEnd * zNew + pageIndex * gap
 
         val anchoredDocMainNew =
             when {
@@ -124,14 +124,17 @@ object ReaderZoomMath {
         baseSnapshot: PageLayoutSnapshot,
         docMainPx: Float,
         scaleFactor: Float,
+        leadingOffsetPx: Float,
     ): Int {
         val gap = baseSnapshot.pageSpacingPx
+        val baseAnchor = baseSnapshot.pageStartsMainPx[0]
         var low = 0
         var high = baseSnapshot.pageCount - 1
         var result = 0
         while (low <= high) {
             val mid = (low + high) ushr 1
-            val startAtScale = (baseSnapshot.pageStartsMainPx[mid] - mid * gap) * scaleFactor + mid * gap
+            val relStart = (baseSnapshot.pageStartsMainPx[mid] - baseAnchor) - mid * gap
+            val startAtScale = leadingOffsetPx + relStart * scaleFactor + mid * gap
             if (startAtScale <= docMainPx) {
                 result = mid
                 low = mid + 1
@@ -141,4 +144,26 @@ object ReaderZoomMath {
         }
         return result.coerceIn(0, baseSnapshot.pageCount - 1)
     }
+
+    private fun pagesExtentAtScale(
+        baseSnapshot: PageLayoutSnapshot,
+        scaleFactor: Float,
+    ): Float {
+        if (baseSnapshot.pageCount <= 0) return 0f
+        val baseContentExtent =
+            baseSnapshot.pageEndsMainPx[baseSnapshot.pageCount - 1] - baseSnapshot.pageStartsMainPx[0]
+        val totalGaps = (baseSnapshot.pageCount - 1).coerceAtLeast(0) * baseSnapshot.pageSpacingPx
+        return (baseContentExtent - totalGaps) * scaleFactor + totalGaps
+    }
+
+    private fun leadingOffsetAtScale(
+        baseSnapshot: PageLayoutSnapshot,
+        scaledPagesExtent: Float,
+    ): Float =
+        if (baseSnapshot.pageCount > 0 && scaledPagesExtent < baseSnapshot.usableMainPx) {
+            baseSnapshot.mainPaddingStartPx +
+                (baseSnapshot.usableMainPx - scaledPagesExtent) * PageLayoutSnapshot.HALF
+        } else {
+            baseSnapshot.mainPaddingStartPx
+        }
 }
