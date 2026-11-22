@@ -8,6 +8,8 @@ local.properties
 *.ap_
 *.dex
 *.class
+*.jks
+*.keystore
 bin/
 gen/
 out/

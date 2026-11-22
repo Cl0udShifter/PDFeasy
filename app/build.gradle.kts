@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -22,8 +25,49 @@ android {
         }
     }
 
+    val localProperties =
+        Properties().apply {
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) {
+                localPropsFile.inputStream().use(::load)
+            }
+        }
+
+    fun signingValue(key: String): String? =
+        System.getenv(key)?.takeIf { it.isNotBlank() }
+            ?: localProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+
+    val keystorePath = signingValue("PDFEASY_KEYSTORE_PATH")
+    val keystorePassword = signingValue("PDFEASY_KEYSTORE_PASSWORD")
+    val keyAliasValue = signingValue("PDFEASY_KEY_ALIAS")
+    val keyPasswordValue = signingValue("PDFEASY_KEY_PASSWORD")
+    val resolvedKeystore =
+        keystorePath?.let { path ->
+            File(path).takeIf { it.isAbsolute } ?: rootProject.file(path)
+        }
+    val hasReleaseSigning =
+        resolvedKeystore != null &&
+            resolvedKeystore.exists() &&
+            keystorePassword != null &&
+            keyAliasValue != null &&
+            keyPasswordValue != null
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = resolvedKeystore
+                storePassword = keystorePassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
