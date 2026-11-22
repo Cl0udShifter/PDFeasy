@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.cl0udshifter.pdfeasy.core.model.NormalizedRect
 import com.cl0udshifter.pdfeasy.core.model.PageDimensions
@@ -65,19 +66,26 @@ fun ReaderViewport(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val motionState = remember { ViewportMotionState() }
-    val layoutSpec = rememberViewportLayoutSpec(params, motionState)
-    val layoutSnapshot = remember(layoutSpec) { PageLayoutSnapshot.create(layoutSpec) }
+    val baseSpec = rememberViewportBaseSpec(params, motionState)
+    val baseSnapshot = remember(baseSpec) { PageLayoutSnapshot.create(baseSpec) }
+    val layoutSnapshot =
+        remember(baseSpec, motionState.zoomScale) {
+            PageLayoutSnapshot.create(baseSpec.copy(zoomScale = motionState.zoomScale))
+        }
+    val latestBaseSnapshot by rememberUpdatedState(baseSnapshot)
     val latestSnapshot by rememberUpdatedState(layoutSnapshot)
+    val latestBaseSpec by rememberUpdatedState(baseSpec)
     val latestCallbacks by rememberUpdatedState(callbacks)
 
     HandleScrollRestoration(
         pendingScrollTarget = params.pendingScrollTarget,
-        baseSpec = layoutSpec,
+        baseSpec = baseSpec,
         motionState = motionState,
         onScrollTargetConsumed = latestCallbacks.onScrollTargetConsumed,
     )
     ObserveViewportFrameUpdates(
         motionState = motionState,
+        baseSpecProvider = { latestBaseSpec },
         snapshotProvider = { latestSnapshot },
         onViewportChanged = latestCallbacks.onViewportChanged,
     )
@@ -87,7 +95,7 @@ fun ReaderViewport(
         ViewportGestureContext(
             coroutineScope = coroutineScope,
             motionState = motionState,
-            snapshotProvider = { latestSnapshot },
+            baseSnapshotProvider = { latestBaseSnapshot },
             onSingleTap = { latestCallbacks.onToggleHud() },
         )
 
@@ -95,12 +103,13 @@ fun ReaderViewport(
         bitmapController = bitmapController,
         drawContext = drawContext,
         gestureContext = gestureContext,
+        zoomedSnapshotProvider = { latestSnapshot },
         modifier = modifier,
     )
 }
 
 @Composable
-private fun rememberViewportLayoutSpec(
+private fun rememberViewportBaseSpec(
     params: ReaderViewportParams,
     motionState: ViewportMotionState,
 ): PageLayoutSpec {
@@ -111,7 +120,6 @@ private fun rememberViewportLayoutSpec(
         params.pageDimensions,
         motionState.viewportWidthPx,
         motionState.viewportHeightPx,
-        motionState.zoomScale,
         params.scrollMode,
         pageSpacingPx,
     ) {
@@ -121,7 +129,7 @@ private fun rememberViewportLayoutSpec(
             viewportWidthPx = motionState.viewportWidthPx,
             viewportHeightPx = motionState.viewportHeightPx,
             pageSpacingPx = pageSpacingPx,
-            zoomScale = motionState.zoomScale,
+            zoomScale = ReaderViewModel.MIN_ZOOM,
             scrollMode = params.scrollMode,
         )
     }
@@ -149,28 +157,30 @@ private fun ReaderCanvasSurface(
     bitmapController: ReaderBitmapController,
     drawContext: PageDrawContext,
     gestureContext: ViewportGestureContext,
+    zoomedSnapshotProvider: () -> PageLayoutSnapshot,
     modifier: Modifier = Modifier,
 ) {
-    val snapshot = gestureContext.snapshotProvider()
+    val baseSnapshot = gestureContext.baseSnapshotProvider()
     val motionState = gestureContext.motionState
     Canvas(
         modifier =
             modifier
                 .fillMaxSize()
                 .clipToBounds()
+                .testTag("reader_viewport")
                 .onSizeChanged {
                     motionState.viewportWidthPx = it.width.toFloat()
                     motionState.viewportHeightPx = it.height.toFloat()
                 }
-                .pointerInput(snapshot.pageCount, snapshot.scrollMode) {
+                .pointerInput(baseSnapshot.pageCount, baseSnapshot.scrollMode) {
                     detectReaderGestures(gestureContext)
                 },
     ) {
         drawRect(color = drawContext.backdropColor)
-        val currentSnapshot = gestureContext.snapshotProvider()
+        val currentSnapshot = zoomedSnapshotProvider()
         if (currentSnapshot.pageCount <= 0) return@Canvas
-        val scrollMain = motionState.scrollMainAnim.value
-        val scrollCross = motionState.scrollCrossAnim.value
+        val scrollMain = motionState.scrollMainPx
+        val scrollCross = motionState.scrollCrossPx
         val visibleRange = currentSnapshot.visiblePageIndices(scrollMain)
 
         for (pageIndex in visibleRange) {
@@ -207,6 +217,7 @@ private fun HandleScrollRestoration(
         if (!viewportReady) return@LaunchedEffect
 
         val clampedZoom = target.zoomScale.coerceIn(ReaderViewModel.MIN_ZOOM, ReaderViewModel.MAX_ZOOM)
+        motionState.cancelAnimations()
         motionState.zoomScale = clampedZoom
         val snapshot = PageLayoutSnapshot.create(baseSpec.copy(zoomScale = clampedZoom))
         val (targetMain, targetCross) =
@@ -215,8 +226,8 @@ private fun HandleScrollRestoration(
             } else {
                 snapshot.scrollMainForPage(target.pageIndex, target.offsetNormalized) to 0f
             }
-        motionState.scrollMainAnim.snapTo(targetMain)
-        motionState.scrollCrossAnim.snapTo(targetCross)
+        motionState.scrollMainPx = targetMain
+        motionState.scrollCrossPx = targetCross
         onScrollTargetConsumed(target.token)
     }
 }
@@ -224,6 +235,7 @@ private fun HandleScrollRestoration(
 @Composable
 private fun ObserveViewportFrameUpdates(
     motionState: ViewportMotionState,
+    baseSpecProvider: () -> PageLayoutSpec,
     snapshotProvider: () -> PageLayoutSnapshot,
     onViewportChanged: (
         currentPage: Int,
@@ -235,17 +247,23 @@ private fun ObserveViewportFrameUpdates(
 ) {
     LaunchedEffect(Unit) {
         snapshotFlow {
-            val snapshot = snapshotProvider()
+            val baseSpec = baseSpecProvider()
             ViewportSnapshotKey(
-                pageCount = snapshot.pageCount,
-                scrollMode = snapshot.scrollMode,
-                viewportW = snapshot.viewportWidthPx,
-                main = motionState.scrollMainAnim.value,
-                cross = motionState.scrollCrossAnim.value,
+                pageCount = baseSpec.pageCount,
+                scrollMode = baseSpec.scrollMode,
+                viewportW = baseSpec.viewportWidthPx,
+                main = motionState.scrollMainPx,
+                cross = motionState.scrollCrossPx,
                 zoom = motionState.zoomScale,
             )
         }.distinctUntilChanged().collect { key ->
-            val snapshot = snapshotProvider()
+            val rawSnapshot = snapshotProvider()
+            val snapshot =
+                if (rawSnapshot.zoomScale == key.zoom) {
+                    rawSnapshot
+                } else {
+                    PageLayoutSnapshot.create(baseSpecProvider().copy(zoomScale = key.zoom))
+                }
             if (snapshot.pageCount <= 0 || snapshot.viewportWidthPx <= 0f) return@collect
             val range = snapshot.visiblePageIndices(key.main)
             val currentPage = snapshot.currentPageIndex(key.main)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,11 +45,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.cl0udshifter.pdfeasy.R
@@ -77,6 +81,11 @@ private object HudDimens {
     val SmallIconSize = 14.dp
     val BubblePadHorizontal = 12.dp
     val BubblePadVertical = 6.dp
+    val ScrubberThumbWidth = 4.dp
+    val ScrubberThumbHeight = 20.dp
+    val ScrubberTrackHeight = 6.dp
+    val ScrubberThumbGap = 4.dp
+    val ScrubberTrackRadius = 3.dp
     const val HUD_ANIM_DURATION_MS = 180
     const val PILL_SURFACE_ALPHA = 0.96f
 }
@@ -320,7 +329,6 @@ private fun ReaderMainDockRow(
     callbacks: ReaderHudCallbacks,
     onScrubEvent: (pageIndex: Int, finished: Boolean) -> Unit,
 ) {
-    val maxIndex = (pageCount - 1).coerceAtLeast(0)
     Row(
         modifier =
             Modifier
@@ -336,18 +344,10 @@ private fun ReaderMainDockRow(
                 modifier = Modifier.size(HudDimens.IconSize),
             )
         }
-        Slider(
-            value = sliderPage.coerceIn(0, maxIndex).toFloat(),
-            onValueChange = { raw -> onScrubEvent(raw.roundToInt().coerceIn(0, maxIndex), false) },
-            onValueChangeFinished = { onScrubEvent(sliderPage, true) },
-            valueRange = 0f..maxIndex.toFloat().coerceAtLeast(1f),
-            enabled = pageCount > 1,
-            colors =
-                SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                ),
+        ReaderScrubberSlider(
+            pageCount = pageCount,
+            sliderPage = sliderPage,
+            onScrubEvent = onScrubEvent,
             modifier = Modifier.weight(1f).padding(horizontal = HudDimens.ThemePillPad),
         )
         IconButton(onClick = callbacks.onOpenSearch, modifier = Modifier.size(HudDimens.MinTouchSize)) {
@@ -364,6 +364,55 @@ private fun ReaderMainDockRow(
             onOpenBookmarksSheet = callbacks.onOpenBookmarksSheet,
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderScrubberSlider(
+    pageCount: Int,
+    sliderPage: Int,
+    onScrubEvent: (pageIndex: Int, finished: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val maxIndex = (pageCount - 1).coerceAtLeast(0)
+    val enabled = pageCount > 1
+    val interactionSource = remember { MutableInteractionSource() }
+    val sliderColors =
+        SliderDefaults.colors(
+            thumbColor = MaterialTheme.colorScheme.primary,
+            activeTrackColor = MaterialTheme.colorScheme.primary,
+            inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+    Slider(
+        value = sliderPage.coerceIn(0, maxIndex).toFloat(),
+        onValueChange = { raw -> onScrubEvent(raw.roundToInt().coerceIn(0, maxIndex), false) },
+        onValueChangeFinished = { onScrubEvent(sliderPage, true) },
+        valueRange = 0f..maxIndex.toFloat().coerceAtLeast(1f),
+        enabled = enabled,
+        colors = sliderColors,
+        interactionSource = interactionSource,
+        thumb = {
+            SliderDefaults.Thumb(
+                interactionSource = interactionSource,
+                colors = sliderColors,
+                enabled = enabled,
+                thumbSize = DpSize(HudDimens.ScrubberThumbWidth, HudDimens.ScrubberThumbHeight),
+                modifier = Modifier.testTag("reader_scrubber_thumb"),
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                colors = sliderColors,
+                enabled = enabled,
+                sliderState = sliderState,
+                modifier = Modifier.height(HudDimens.ScrubberTrackHeight),
+                drawStopIndicator = null,
+                thumbTrackGapSize = HudDimens.ScrubberThumbGap,
+                trackInsideCornerSize = HudDimens.ScrubberTrackRadius,
+            )
+        },
+        modifier = modifier,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

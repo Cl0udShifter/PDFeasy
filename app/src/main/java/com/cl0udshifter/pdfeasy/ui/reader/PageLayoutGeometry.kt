@@ -46,6 +46,7 @@ class PageLayoutSnapshot(
     val pageCount: Int get() = spec.pageCount
     val viewportWidthPx: Float get() = spec.viewportWidthPx
     val viewportHeightPx: Float get() = spec.viewportHeightPx
+    val pageSpacingPx: Float get() = spec.pageSpacingPx
     val zoomScale: Float get() = spec.zoomScale
     val scrollMode: ScrollMode get() = spec.scrollMode
     val pageStartsMainPx: FloatArray get() = arrays.startsMainPx

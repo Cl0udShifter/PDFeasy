@@ -89,4 +89,111 @@ class PageLayoutGeometryTest {
         assertTrue(crop.top in 0f..0.6f)
         assertTrue(crop.bottom in 0.4f..1f)
     }
+
+    @Test
+    fun `multi step pinch zoom in and out keeps focal document point pinned on current page`() {
+        val dimensions = (0 until 30).associateWith { PageDimensions(it, 600, 900) }
+        val baseSpec =
+            PageLayoutSpec(
+                pageCount = 30,
+                pageDimensions = dimensions,
+                viewportWidthPx = 1000f,
+                viewportHeightPx = 1500f,
+                pageSpacingPx = 24f,
+                zoomScale = 1f,
+                scrollMode = ScrollMode.CONTINUOUS_VERTICAL,
+            )
+        val baseSnapshot = PageLayoutSnapshot.create(baseSpec)
+        val targetPage = 14
+        val centroidMain = 750f
+        val startScrollMain = baseSnapshot.pageStartsMainPx[targetPage] + 300f
+        val initialFractionOnPage =
+            ((startScrollMain + centroidMain) - baseSnapshot.pageStartsMainPx[targetPage]) /
+                baseSnapshot.pageHeightsPx[targetPage]
+
+        val afterZoomIn =
+            stepThroughZooms(
+                baseSpec = baseSpec,
+                targetPage = targetPage,
+                centroidMain = centroidMain,
+                initialState = ZoomTransformOutput(1f, startScrollMain, 0f),
+                zoomTargets = listOf(1.15f, 1.32f, 1.55f, 1.85f, 2.2f, 2.6f, 2.8f),
+            )
+        val zoomedSnap = PageLayoutSnapshot.create(baseSpec.copy(zoomScale = afterZoomIn.zoomScale))
+        val zoomedFraction =
+            ((afterZoomIn.scrollMainPx + centroidMain) - zoomedSnap.pageStartsMainPx[targetPage]) /
+                zoomedSnap.pageHeightsPx[targetPage]
+        assertEquals(initialFractionOnPage, zoomedFraction, 0.002f)
+
+        val afterZoomOut =
+            stepThroughZooms(
+                baseSpec = baseSpec,
+                targetPage = targetPage,
+                centroidMain = centroidMain,
+                initialState = afterZoomIn,
+                zoomTargets = listOf(2.4f, 2.0f, 1.6f, 1.25f, 1.0f),
+            )
+        assertEquals(startScrollMain, afterZoomOut.scrollMainPx, 1f)
+    }
+
+    private fun stepThroughZooms(
+        baseSpec: PageLayoutSpec,
+        targetPage: Int,
+        centroidMain: Float,
+        initialState: ZoomTransformOutput,
+        zoomTargets: List<Float>,
+    ): ZoomTransformOutput {
+        val baseSnapshot = PageLayoutSnapshot.create(baseSpec)
+        var current = initialState
+        for (nextZoom in zoomTargets) {
+            current =
+                ReaderZoomMath.transformScrollForZoom(
+                    baseSnapshot = baseSnapshot,
+                    input =
+                        ZoomTransformInput(
+                            oldZoom = current.zoomScale,
+                            newZoom = nextZoom,
+                            oldScrollMainPx = current.scrollMainPx,
+                            oldScrollCrossPx = current.scrollCrossPx,
+                            centroidMainPx = centroidMain,
+                            centroidCrossPx = 500f,
+                        ),
+                )
+            val snapAtZoom = PageLayoutSnapshot.create(baseSpec.copy(zoomScale = current.zoomScale))
+            assertEquals(targetPage, snapAtZoom.currentPageIndex(current.scrollMainPx))
+        }
+        return current
+    }
+
+    @Test
+    fun `horizontal zoom from centered landscape page anchors cross axis without edge jump`() {
+        val dimensions = mapOf(0 to PageDimensions(pageIndex = 0, widthPoints = 1000, heightPoints = 500))
+        val baseSpec =
+            PageLayoutSpec(
+                pageCount = 1,
+                pageDimensions = dimensions,
+                viewportWidthPx = 1000f,
+                viewportHeightPx = 1000f,
+                pageSpacingPx = 20f,
+                zoomScale = 1f,
+                scrollMode = ScrollMode.CONTINUOUS_HORIZONTAL,
+            )
+        val baseSnapshot = PageLayoutSnapshot.create(baseSpec)
+        val out =
+            ReaderZoomMath.transformScrollForZoom(
+                baseSnapshot = baseSnapshot,
+                input =
+                    ZoomTransformInput(
+                        oldZoom = 1f,
+                        newZoom = 3f,
+                        oldScrollMainPx = 0f,
+                        oldScrollCrossPx = 0f,
+                        centroidMainPx = 500f,
+                        centroidCrossPx = 500f,
+                    ),
+            )
+        // Height scales from 500 to 1500 inside 1000px viewport -> centered cross scroll is 250px
+        assertEquals(250f, out.scrollCrossPx, 0.5f)
+        assertEquals(1000f, out.scrollMainPx, 0.5f)
+    }
 }

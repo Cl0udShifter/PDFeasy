@@ -5,12 +5,23 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.unit.dp
 import com.cl0udshifter.pdfeasy.core.domain.LibraryItemWithProgress
 import com.cl0udshifter.pdfeasy.core.model.Bookmark
 import com.cl0udshifter.pdfeasy.core.model.CoreResult
@@ -35,6 +46,10 @@ import com.cl0udshifter.pdfeasy.ui.reader.ReaderHudCallbacks
 import com.cl0udshifter.pdfeasy.ui.reader.ReaderHudOverlay
 import com.cl0udshifter.pdfeasy.ui.reader.ReaderSearchState
 import com.cl0udshifter.pdfeasy.ui.reader.ReaderUiState
+import com.cl0udshifter.pdfeasy.ui.reader.ReaderViewport
+import com.cl0udshifter.pdfeasy.ui.reader.ReaderViewportCallbacks
+import com.cl0udshifter.pdfeasy.ui.reader.ReaderViewportParams
+import com.cl0udshifter.pdfeasy.ui.reader.ScrollRestoreTarget
 import com.cl0udshifter.pdfeasy.ui.reader.TileSyncRequest
 import com.cl0udshifter.pdfeasy.ui.theme.LightExtendedColors
 import com.cl0udshifter.pdfeasy.ui.theme.PdfEasyTheme
@@ -159,6 +174,7 @@ class ReaderBitmapControllerAndUiTest {
         }
 
         composeRule.onNodeWithText("10 / 120").assertIsDisplayed()
+        composeRule.onNodeWithTag("reader_scrubber_thumb", useUnmergedTree = true).assertHeightIsEqualTo(20.dp)
         composeRule.onNodeWithText("Sépia").performClick()
         assertEquals(PageRenderTheme.SEPIA, selectedTheme)
         composeRule.onNodeWithText("Senha incorreta. Tente novamente.").assertIsDisplayed()
@@ -288,8 +304,72 @@ class ReaderBitmapControllerAndUiTest {
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(Uri.parse("content://docs/missing.pdf"), "application/pdf")
             }
-        val activity = Robolectric.buildActivity(MainActivity::class.java, viewIntent).setup().get()
-        assertNotNull(activity)
+        val controller = Robolectric.buildActivity(MainActivity::class.java, viewIntent).setup()
+        assertNotNull(controller.get())
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    fun readerViewportPinchZoomPreservesCurrentPageWithoutJumping() {
+        val observedPages = mutableListOf<Int>()
+        var latestZoom = 1f
+        val dimensions = (0 until 20).associateWith { PageDimensions(it, 600, 900) }
+        val controllerScope = CoroutineScope(SupervisorJob())
+        val controller = ReaderBitmapController(scope = controllerScope, recycleDelayMs = 0L)
+
+        try {
+            composeRule.setContent {
+                var pendingTarget by remember {
+                    mutableStateOf<ScrollRestoreTarget?>(
+                        ScrollRestoreTarget(pageIndex = 10, offsetNormalized = 0.2f, zoomScale = 1f, token = 1L),
+                    )
+                }
+                Box(modifier = Modifier.size(400.dp, 600.dp)) {
+                    ReaderViewport(
+                        params =
+                            ReaderViewportParams(
+                                pageCount = 20,
+                                pageDimensions = dimensions,
+                                scrollMode = ScrollMode.CONTINUOUS_VERTICAL,
+                                renderTheme = PageRenderTheme.ORIGINAL,
+                                searchMatches = emptyList(),
+                                activeSearchMatch = null,
+                                pendingScrollTarget = pendingTarget,
+                            ),
+                        bitmapController = controller,
+                        callbacks =
+                            ReaderViewportCallbacks(
+                                onScrollTargetConsumed = { pendingTarget = null },
+                                onToggleHud = {},
+                                onViewportChanged = { page, _, zoom, _, _ ->
+                                    observedPages.add(page)
+                                    latestZoom = zoom
+                                },
+                            ),
+                    )
+                }
+            }
+
+            composeRule.waitForIdle()
+            assertEquals(10, observedPages.lastOrNull())
+            observedPages.clear()
+
+            composeRule.onNodeWithTag("reader_viewport").performTouchInput {
+                pinch(
+                    start0 = Offset(centerX - 30f, centerY),
+                    end0 = Offset(centerX - 150f, centerY),
+                    start1 = Offset(centerX + 30f, centerY),
+                    end1 = Offset(centerX + 150f, centerY),
+                )
+            }
+            composeRule.waitForIdle()
+
+            assertTrue(latestZoom > 1.5f)
+            assertTrue(observedPages.isNotEmpty())
+            assertTrue(observedPages.all { it in 9..11 })
+        } finally {
+            controllerScope.cancel()
+        }
     }
 
     private fun emptyLibraryCallbacks(onOpenPdf: () -> Unit = {}): LibraryScreenCallbacks =

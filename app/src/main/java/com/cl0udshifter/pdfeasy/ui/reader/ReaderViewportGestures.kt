@@ -1,7 +1,6 @@
 package com.cl0udshifter.pdfeasy.ui.reader
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.tween
@@ -34,14 +33,20 @@ class ViewportMotionState {
     var viewportWidthPx by mutableFloatStateOf(0f)
     var viewportHeightPx by mutableFloatStateOf(0f)
     var zoomScale by mutableFloatStateOf(ReaderViewModel.MIN_ZOOM)
-    val scrollMainAnim = Animatable(0f)
-    val scrollCrossAnim = Animatable(0f)
+    var scrollMainPx by mutableFloatStateOf(0f)
+    var scrollCrossPx by mutableFloatStateOf(0f)
+    var activeAnimationJob: Job? = null
+
+    fun cancelAnimations() {
+        activeAnimationJob?.cancel()
+        activeAnimationJob = null
+    }
 }
 
 class ViewportGestureContext(
     val coroutineScope: CoroutineScope,
     val motionState: ViewportMotionState,
-    val snapshotProvider: () -> PageLayoutSnapshot,
+    val baseSnapshotProvider: () -> PageLayoutSnapshot,
     val onSingleTap: () -> Unit,
 )
 
@@ -68,10 +73,7 @@ suspend fun PointerInputScope.detectReaderGestures(ctx: ViewportGestureContext) 
 
     awaitEachGesture {
         val firstDown = awaitFirstDown(requireUnconsumed = false)
-        ctx.coroutineScope.launch {
-            ctx.motionState.scrollMainAnim.stop()
-            ctx.motionState.scrollCrossAnim.stop()
-        }
+        ctx.motionState.cancelAnimations()
         val velocityTracker = VelocityTracker().apply {
             addPosition(firstDown.uptimeMillis, firstDown.position)
         }
@@ -86,7 +88,8 @@ suspend fun PointerInputScope.detectReaderGestures(ctx: ViewportGestureContext) 
                 pendingTapJob?.cancel()
                 pendingTapJob = null
                 lastTapTime = 0L
-                ctx.coroutineScope.launch { toggleDoubleTapZoom(result.lastPosition, ctx) }
+                ctx.motionState.activeAnimationJob =
+                    ctx.coroutineScope.launch { toggleDoubleTapZoom(result.lastPosition, ctx) }
             } else {
                 lastTapTime = result.lastUpTime
                 lastTapOffset = result.lastPosition
@@ -117,11 +120,12 @@ private suspend fun AwaitPointerEventScope.trackPointersUntilRelease(
     do {
         val event = awaitPointerEvent()
         val pressedCount = event.changes.count { it.pressed }
-        val snapshot = ctx.snapshotProvider()
+        val baseSnapshot = ctx.baseSnapshotProvider()
 
         if (pressedCount >= 2) {
             wasMultiTouch = true
-            applyMultiTouchTransform(event, snapshot, ctx)
+            ctx.motionState.cancelAnimations()
+            applyMultiTouchTransform(event, baseSnapshot, ctx.motionState)
         } else if (!wasMultiTouch) {
             val activeChange = event.changes.firstOrNull { it.pressed }
             val released = if (activeChange == null) event.changes.firstOrNull() else null
@@ -131,7 +135,7 @@ private suspend fun AwaitPointerEventScope.trackPointersUntilRelease(
                 lastUpTime = activeChange.uptimeMillis
                 val delta = activeChange.positionChange()
                 totalDragPx += delta.getDistance()
-                applyDragIfPastSlop(activeChange, delta, totalDragPx, snapshot, ctx)
+                applyDragIfPastSlop(activeChange, delta, totalDragPx, baseSnapshot, ctx.motionState)
             } else if (released != null) {
                 lastUpTime = released.uptimeMillis
                 lastPosition = released.position
@@ -146,19 +150,19 @@ private fun AwaitPointerEventScope.applyDragIfPastSlop(
     activeChange: PointerInputChange,
     delta: Offset,
     totalDragPx: Float,
-    snapshot: PageLayoutSnapshot,
-    ctx: ViewportGestureContext,
+    baseSnapshot: PageLayoutSnapshot,
+    motion: ViewportMotionState,
 ) {
     if (totalDragPx > viewConfiguration.touchSlop) {
         activeChange.consume()
-        applySingleFingerPan(delta, snapshot, ctx)
+        applySingleFingerPan(delta, baseSnapshot, motion)
     }
 }
 
 private fun applyMultiTouchTransform(
     event: PointerEvent,
-    snapshot: PageLayoutSnapshot,
-    ctx: ViewportGestureContext,
+    baseSnapshot: PageLayoutSnapshot,
+    motion: ViewportMotionState,
 ) {
     val zoomChange = event.calculateZoom()
     val pan = event.calculatePan()
@@ -166,43 +170,41 @@ private fun applyMultiTouchTransform(
     if (zoomChange == 1f && pan == Offset.Zero) return
 
     event.changes.forEach { it.consume() }
-    val motion = ctx.motionState
     val oldZoom = motion.zoomScale
     val newZoom = (oldZoom * zoomChange).coerceIn(ReaderViewModel.MIN_ZOOM, ReaderViewModel.MAX_ZOOM)
-    val ratio = if (oldZoom > 0f) newZoom / oldZoom else 1f
-    motion.zoomScale = newZoom
-
-    val isVertical = snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
-    val centroidMain = if (isVertical) centroid.y else centroid.x
-    val centroidCross = if (isVertical) centroid.x else centroid.y
-    val panMain = if (isVertical) pan.y else pan.x
-    val panCross = if (isVertical) pan.x else pan.y
-
-    val nextMain = (motion.scrollMainAnim.value + centroidMain) * ratio - centroidMain - panMain
-    val nextCross = (motion.scrollCrossAnim.value + centroidCross) * ratio - centroidCross - panCross
-    val (maxMain, maxCross) = scaledMaxScroll(snapshot, newZoom, ratio)
-
-    ctx.coroutineScope.launch {
-        motion.scrollMainAnim.snapTo(nextMain.coerceIn(0f, maxMain))
-        motion.scrollCrossAnim.snapTo(nextCross.coerceIn(0f, maxCross))
-    }
+    val isVertical = baseSnapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
+    val output =
+        ReaderZoomMath.transformScrollForZoom(
+            baseSnapshot = baseSnapshot,
+            input =
+                ZoomTransformInput(
+                    oldZoom = oldZoom,
+                    newZoom = newZoom,
+                    oldScrollMainPx = motion.scrollMainPx,
+                    oldScrollCrossPx = motion.scrollCrossPx,
+                    centroidMainPx = if (isVertical) centroid.y else centroid.x,
+                    centroidCrossPx = if (isVertical) centroid.x else centroid.y,
+                    panMainPx = if (isVertical) pan.y else pan.x,
+                    panCrossPx = if (isVertical) pan.x else pan.y,
+                ),
+        )
+    motion.zoomScale = output.zoomScale
+    motion.scrollMainPx = output.scrollMainPx
+    motion.scrollCrossPx = output.scrollCrossPx
 }
 
 private fun applySingleFingerPan(
     delta: Offset,
-    snapshot: PageLayoutSnapshot,
-    ctx: ViewportGestureContext,
+    baseSnapshot: PageLayoutSnapshot,
+    motion: ViewportMotionState,
 ) {
-    val isVertical = snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
+    val isVertical = baseSnapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
     val deltaMain = if (isVertical) -delta.y else -delta.x
     val deltaCross = if (isVertical) -delta.x else -delta.y
-    val motion = ctx.motionState
-    val nextMain = (motion.scrollMainAnim.value + deltaMain).coerceIn(0f, snapshot.maxScrollMainPx)
-    val nextCross = (motion.scrollCrossAnim.value + deltaCross).coerceIn(0f, snapshot.maxScrollCrossPx)
-    ctx.coroutineScope.launch {
-        motion.scrollMainAnim.snapTo(nextMain)
-        motion.scrollCrossAnim.snapTo(nextCross)
-    }
+    val maxMain = ReaderZoomMath.scaledMaxScrollMain(baseSnapshot, motion.zoomScale)
+    val maxCross = ReaderZoomMath.scaledMaxScrollCross(baseSnapshot, motion.zoomScale)
+    motion.scrollMainPx = (motion.scrollMainPx + deltaMain).coerceIn(0f, maxMain)
+    motion.scrollCrossPx = (motion.scrollCrossPx + deltaCross).coerceIn(0f, maxCross)
 }
 
 private fun launchFlingDecay(
@@ -210,32 +212,48 @@ private fun launchFlingDecay(
     ctx: ViewportGestureContext,
     decay: DecayAnimationSpec<Float>,
 ) {
-    val snapshot = ctx.snapshotProvider()
-    val isVertical = snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
+    val baseSnapshot = ctx.baseSnapshotProvider()
+    val isVertical = baseSnapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
     val velocity = velocityTracker.calculateVelocity()
     val mainVelocity = if (isVertical) -velocity.y else -velocity.x
     val crossVelocity = if (isVertical) -velocity.x else -velocity.y
     val motion = ctx.motionState
+    val maxMain = ReaderZoomMath.scaledMaxScrollMain(baseSnapshot, motion.zoomScale)
+    val maxCross = ReaderZoomMath.scaledMaxScrollCross(baseSnapshot, motion.zoomScale)
 
-    if (abs(mainVelocity) > GestureConstants.FLING_MIN_VELOCITY) {
-        launchBoundedDecay(ctx.coroutineScope, motion.scrollMainAnim, mainVelocity, snapshot.maxScrollMainPx, decay)
-    }
-    if (snapshot.maxScrollCrossPx > 0f && abs(crossVelocity) > GestureConstants.FLING_MIN_VELOCITY) {
-        launchBoundedDecay(ctx.coroutineScope, motion.scrollCrossAnim, crossVelocity, snapshot.maxScrollCrossPx, decay)
-    }
+    val flingMain = abs(mainVelocity) > GestureConstants.FLING_MIN_VELOCITY
+    val flingCross = maxCross > 0f && abs(crossVelocity) > GestureConstants.FLING_MIN_VELOCITY
+    if (!flingMain && !flingCross) return
+
+    motion.cancelAnimations()
+    motion.activeAnimationJob =
+        ctx.coroutineScope.launch {
+            coroutineScope {
+                if (flingMain) {
+                    launchBoundedDecay(mainVelocity, motion.scrollMainPx, maxMain, decay) {
+                        motion.scrollMainPx = it
+                    }
+                }
+                if (flingCross) {
+                    launchBoundedDecay(crossVelocity, motion.scrollCrossPx, maxCross, decay) {
+                        motion.scrollCrossPx = it
+                    }
+                }
+            }
+        }
 }
 
-private fun launchBoundedDecay(
-    scope: CoroutineScope,
-    animatable: Animatable<Float, AnimationVector1D>,
+private fun CoroutineScope.launchBoundedDecay(
     velocity: Float,
+    startValue: Float,
     upperBound: Float,
     decay: DecayAnimationSpec<Float>,
+    onUpdate: (Float) -> Unit,
 ) {
-    scope.launch {
-        animatable.updateBounds(lowerBound = 0f, upperBound = upperBound)
-        animatable.animateDecay(velocity, decay)
-        animatable.updateBounds(lowerBound = null, upperBound = null)
+    launch {
+        val anim = Animatable(startValue)
+        anim.updateBounds(lowerBound = 0f, upperBound = upperBound)
+        anim.animateDecay(velocity, decay) { onUpdate(value) }
     }
 }
 
@@ -244,6 +262,7 @@ private suspend fun toggleDoubleTapZoom(
     ctx: ViewportGestureContext,
 ) {
     val motion = ctx.motionState
+    val baseSnapshot = ctx.baseSnapshotProvider()
     val startZoom = motion.zoomScale
     val targetZoom =
         if (startZoom > GestureConstants.DOUBLE_TAP_THRESHOLD_ZOOM) {
@@ -251,35 +270,31 @@ private suspend fun toggleDoubleTapZoom(
         } else {
             GestureConstants.DOUBLE_TAP_ZOOM
         }
-    val snapshot = ctx.snapshotProvider()
-    val isVertical = snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
+    val startMain = motion.scrollMainPx
+    val startCross = motion.scrollCrossPx
+    val isVertical = baseSnapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL
     val tapMain = if (isVertical) tapOffset.y else tapOffset.x
     val tapCross = if (isVertical) tapOffset.x else tapOffset.y
-    val ratio = if (startZoom > 0f) targetZoom / startZoom else 1f
-    val (targetMaxMain, targetMaxCross) = scaledMaxScroll(snapshot, targetZoom, ratio)
-    val endMain = ((motion.scrollMainAnim.value + tapMain) * ratio - tapMain).coerceIn(0f, targetMaxMain)
-    val endCross = ((motion.scrollCrossAnim.value + tapCross) * ratio - tapCross).coerceIn(0f, targetMaxCross)
-
-    val zoomAnim = Animatable(startZoom)
+    val progressAnim = Animatable(0f)
     val animSpec = tween<Float>(durationMillis = GestureConstants.DOUBLE_TAP_ANIM_MS)
-    coroutineScope {
-        launch { zoomAnim.animateTo(targetZoom, animSpec) { motion.zoomScale = value } }
-        launch { motion.scrollMainAnim.animateTo(endMain, animSpec) }
-        launch { motion.scrollCrossAnim.animateTo(endCross, animSpec) }
+
+    progressAnim.animateTo(1f, animSpec) {
+        val stepZoom = startZoom + (targetZoom - startZoom) * value
+        val step =
+            ReaderZoomMath.transformScrollForZoom(
+                baseSnapshot = baseSnapshot,
+                input =
+                    ZoomTransformInput(
+                        oldZoom = startZoom,
+                        newZoom = stepZoom,
+                        oldScrollMainPx = startMain,
+                        oldScrollCrossPx = startCross,
+                        centroidMainPx = tapMain,
+                        centroidCrossPx = tapCross,
+                    ),
+            )
+        motion.zoomScale = step.zoomScale
+        motion.scrollMainPx = step.scrollMainPx
+        motion.scrollCrossPx = step.scrollCrossPx
     }
 }
-
-private fun scaledMaxScroll(
-    snapshot: PageLayoutSnapshot,
-    newZoom: Float,
-    ratio: Float,
-): Pair<Float, Float> =
-    if (snapshot.scrollMode == ScrollMode.CONTINUOUS_VERTICAL) {
-        val maxMain = (snapshot.totalMainExtentPx * ratio - snapshot.viewportHeightPx).coerceAtLeast(0f)
-        val maxCross = (snapshot.viewportWidthPx * newZoom - snapshot.viewportWidthPx).coerceAtLeast(0f)
-        maxMain to maxCross
-    } else {
-        val maxMain = (snapshot.totalMainExtentPx * ratio - snapshot.viewportWidthPx).coerceAtLeast(0f)
-        val maxCross = (snapshot.maxCrossExtentPx * ratio - snapshot.viewportHeightPx).coerceAtLeast(0f)
-        maxMain to maxCross
-    }
