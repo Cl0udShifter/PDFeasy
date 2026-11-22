@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -180,8 +181,12 @@ class PdfEasyDatabaseAndAndroidTest {
         assertNotNull(container.settingsRepository)
         assertNotNull(container.appUpdateRepository)
         assertNotNull(container.pdfEngine)
-        assertEquals("0.1.1", container.appUpdateRepository.currentVersionName)
-        assertEquals(2L, container.appUpdateRepository.currentVersionCode)
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        assertEquals(packageInfo.versionName, container.appUpdateRepository.currentVersionName)
+        assertEquals(
+            PackageInfoCompat.getLongVersionCode(packageInfo),
+            container.appUpdateRepository.currentVersionCode,
+        )
     }
 
     @Test
