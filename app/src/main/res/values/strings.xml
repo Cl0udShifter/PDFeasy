@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PDFeasy</string>
+
+    <!-- Biblioteca -->
+    <string name="library_title">Biblioteca</string>
+    <string name="library_open_pdf">Abrir PDF</string>
+    <string name="library_choose_pdf">Escolher PDF</string>
+    <string name="library_search_placeholder">Buscar por nome do arquivo…</string>
+    <string name="library_clear_search">Limpar busca</string>
+    <string name="library_filter_all_format">Todos (%1$d)</string>
+    <string name="library_filter_reading">Em leitura</string>
+    <string name="library_filter_unavailable_format">Indisponíveis (%1$d)</string>
+    <string name="library_pages_format">%1$d págs</string>
+    <string name="library_pages_unknown">--</string>
+    <string name="library_badge_password">Senha</string>
+    <string name="library_badge_moved">Movido</string>
+    <string name="library_badge_revoked">Sem acesso</string>
+    <string name="library_empty_title">Sua estante está vazia</string>
+    <string name="library_empty_subtitle">Abra um PDF do dispositivo para ler sem anúncios ou distração.</string>
+    <string name="library_search_empty_format">Nenhum PDF encontrado para "%1$s".</string>
+    <string name="library_filter_empty">Nenhum PDF nesta categoria.</string>
+    <string name="library_more_actions">Opções do documento</string>
+
+    <!-- Sheet de acoes do documento -->
+    <string name="doc_action_open">Abrir documento</string>
+    <string name="doc_action_relink">Re-vincular PDF</string>
+    <string name="doc_action_remove">Remover da biblioteca</string>
+    <string name="doc_status_moved_desc">O arquivo original foi movido ou excluído fora do aplicativo. Você pode localizar um novo arquivo ou remover este registro.</string>
+    <string name="doc_status_revoked_desc">A permissão de leitura foi revogada pelo sistema. Selecione o PDF novamente para restaurar o acesso mantendo seu progresso.</string>
+
+    <!-- Leitor 120FPS -->
+    <string name="reader_back">Voltar para a biblioteca</string>
+    <string name="reader_page_counter_format">%1$d / %2$d</string>
+    <string name="reader_scrubber_bubble_format">Pág. %1$d / %2$d</string>
+    <string name="reader_theme_original">Original</string>
+    <string name="reader_theme_dark">Escuro</string>
+    <string name="reader_theme_sepia">Sépia</string>
+    <string name="reader_scroll_vertical">Rolagem vertical</string>
+    <string name="reader_scroll_horizontal">Rolagem horizontal</string>
+    <string name="reader_search_action">Buscar no texto</string>
+    <string name="reader_search_placeholder">Buscar no PDF…</string>
+    <string name="reader_search_prev">Ocorrência anterior</string>
+    <string name="reader_search_next">Próxima ocorrência</string>
+    <string name="reader_search_close">Fechar busca</string>
+    <string name="reader_search_count_format">%1$d/%2$d</string>
+    <string name="reader_search_empty">0/0</string>
+    <string name="reader_bookmark_toggle">Alternar marcador</string>
+    <string name="reader_bookmarks_open">Abrir marcadores</string>
+    <string name="reader_bookmarks_title">Marcadores</string>
+    <string name="reader_bookmarks_empty">Nenhum marcador salvo neste documento.</string>
+    <string name="reader_bookmarks_add_current">Marcar página %1$d</string>
+    <string name="reader_bookmarks_page_label_format">Página %1$d</string>
+    <string name="reader_bookmark_delete">Remover marcador</string>
+
+    <!-- Senha e erros -->
+    <string name="password_dialog_title">PDF protegido por senha</string>
+    <string name="password_dialog_subtitle">Digite a senha de abertura para visualizar "%1$s".</string>
+    <string name="password_field_label">Senha</string>
+    <string name="password_invalid_error">Senha incorreta. Tente novamente.</string>
+    <string name="password_toggle_visibility">Mostrar ou ocultar senha</string>
+    <string name="password_cancel">Voltar</string>
+    <string name="password_unlock">Desbloquear</string>
+
+    <string name="reader_error_title">Não foi possível abrir o PDF</string>
+    <string name="reader_error_not_found">O arquivo não foi encontrado ou foi movido.</string>
+    <string name="reader_error_permission">Permissão de acesso negada pelo sistema.</string>
+    <string name="reader_error_corrupted">O arquivo parece corrompido ou usa um formato não suportado.</string>
+    <string name="reader_error_io">Falha de leitura ao acessar o armazenamento.</string>
+    <string name="reader_error_back">Voltar à biblioteca</string>
+    <string name="reader_loading">Abrindo documento…</string>
+</resources>
